@@ -1,7 +1,3 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package org.cloudbus.cloudsim.quantum;
 
 import com.google.gson.Gson;
@@ -23,6 +19,7 @@ import org.cloudbus.cloudsim.Host;
 import org.cloudbus.cloudsim.ResCloudlet;
 import org.cloudbus.cloudsim.Vm;
 import static org.cloudbus.cloudsim.examples.power.Constants.SCHEDULING_INTERVAL;
+import org.cloudbus.cloudsim.power.PowerHost;
 import org.cloudbus.cloudsim.power.PowerVmAllocationPolicyAbstract;
 import org.cloudbus.cloudsim.util.ExecutionTimeMeasurer;
 
@@ -40,32 +37,29 @@ public class PowerVmAllocationPolicyQuantum extends
     @Override
     public List<Map<String, Object>> optimizeAllocation(List<? extends Vm> vmList) {
         ExecutionTimeMeasurer.start("optimizeAllocationTotal");
-        //System.out.println(getVmTable());
         List<Map<String, Object>> migrationMap = null;
 
         CloseableHttpClient httpClient = HttpClientBuilder.create().build();
         try {
             HttpPost request = new HttpPost("http://127.0.0.1:1234/");
             Gson gson = new Gson();
-            Map<String, Host> vmT = getVmTable();
             Map<String, Object> jsonmap = new HashMap<>();
             Map<Integer, HostJSON> hostmap = new HashMap<>();
             Map<Integer, VMJSON> vmmap = new HashMap<>();
             Map<Integer, CloudletJSON> cloudletmap = new HashMap<>();
 
-            for (Map.Entry<String, Host> entry : vmT.entrySet()) {
-                //System.out.println("Key = " + entry.getKey() + ", 
-                //Value = " + entry.getValue());
-
+            for (PowerHost host : this.<PowerHost> getHostList()) {
                 HostJSON hostjson = new HostJSON(
-                        entry.getValue().getId(),
-                        entry.getValue().getStorage(),
-                        entry.getValue().getRam(),
-                        entry.getValue().getTotalMips());
-                hostmap.put(entry.getValue().getId(), hostjson);
-
+                        host.getId(),
+                        host.getStorage(),
+                        host.getRam(),
+                        host.getTotalMips(),
+                        host.getMaxPower(),
+                        host.getBwProvisioner().getAvailableBw()
+                );
+                hostmap.put(host.getId(), hostjson);
             }
-
+            
             for (Vm entry : vmList) {
                 VMJSON vmjson = new VMJSON(
                         entry.getId(),
@@ -119,7 +113,8 @@ public class PowerVmAllocationPolicyQuantum extends
                 System.out.println(statusLine.getStatusCode() + " " + statusLine.getReasonPhrase());
                 String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
                 System.out.println("Response body: " + responseBody);
-                Map<String, String> retMap = new Gson().fromJson(responseBody, new TypeToken<HashMap<String, Object>>() {}.getType());
+                Map<String, String> retMap = new Gson().fromJson(responseBody, new TypeToken<HashMap<String, Object>>() {
+                }.getType());
                 migrationMap = constructMigrationMap(retMap, vmList, getHostList());
             }
         } catch (Exception ex) {
@@ -151,30 +146,29 @@ public class PowerVmAllocationPolicyQuantum extends
         //return migrationMap;
         return migrationMap;
     }
-    
+
     public List<Map<String, Object>> constructMigrationMap(
             Map<String, String> response,
-            List<? extends Vm> vmList, 
+            List<? extends Vm> vmList,
             List<? extends Host> hostList) {
         List<Map<String, Object>> migrationMap = new ArrayList<>();
-        for (Map.Entry<String,String> entry : response.entrySet()) {
+        for (Map.Entry<String, String> entry : response.entrySet()) {
             String key = entry.getKey();
             String value = entry.getValue();
             Map<String, Object> map = new HashMap<>();
             for (Vm v : vmList) {
-                if(v.getId() == Integer. parseInt(key)) {
+                if (v.getId() == Integer.parseInt(key)) {
                     map.put("vm", v);
                 }
             }
             for (Host h : hostList) {
-                if(h.getId() == Integer. parseInt(value)) {
+                if (h.getId() == Integer.parseInt(value)) {
                     map.put("host", h);
                 }
             }
             migrationMap.add(map);
         }
         return migrationMap;
-        
     }
-
+    
 }
